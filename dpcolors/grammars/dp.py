@@ -1,4 +1,6 @@
-from arpeggio import RegExMatch as _, OrderedChoice, ZeroOrMore, ParserPython
+from arpeggio import RegExMatch as _, OrderedChoice, ZeroOrMore, ParserPython, PTNodeVisitor, visit_parse_tree
+
+from dpcolors import ColorRGB, ColorPart, ColorString, NoColor, ColorBase
 
 qfont_ascii_table = [
  '\0', '#',  '#',  '#',  '#',  '.',  '#',  '#',
@@ -105,6 +107,20 @@ qfont_unicode_glyphs = [
 ]
 
 
+dec_to_rgb = [
+    (128, 128, 128),
+    (255, 0, 0),
+    (51, 255, 0),
+    (255, 255, 0),
+    (51, 102, 255),
+    (51, 255, 255),
+    (255, 51, 102),
+    (255, 255, 255),
+    (153, 153, 153),
+    (128, 128, 128)
+]
+
+
 def dec_color():
     return _(r'\^\d')
 
@@ -129,6 +145,64 @@ def dp_string():
     return ZeroOrMore(dp_token)
 
 
-def parse(text, debug=False):
-    parser = ParserPython(dp_string, debug=debug)
-    return parser.parse(text)
+class DPTreeVisitor(PTNodeVisitor):
+    def __init__(self, use_unicode_for_glyphs, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.use_unicode_for_glyphs = use_unicode_for_glyphs
+
+    def visit_dec_color(self, node, children):
+        rgb = dec_to_rgb[int(node.value[1:])]
+        if rgb:
+            return ColorRGB(*rgb, max_value=255).scale()
+        else:
+            return NoColor()
+
+    def visit_hex_color(self, node, children):
+        v = node.value
+        return ColorRGB(int(v[2], 16), int(v[3], 16), int(v[4], 16), max_value=15).scale()
+
+    def visit_literal_caret(self, node, children):
+        return '^'
+
+    def visit_character(self, node, children):
+        if '\ue000' <= node.value <= '\ue0ff':
+            if self.use_unicode_for_glyphs:
+                return qfont_unicode_glyphs[ord(node.value) - 0xe000]
+            else:
+                return qfont_ascii_table[ord(node.value) - 0xe000]
+        return node.value
+
+    def visit_dp_token(self, node, children):
+        return children[0]
+
+    def visit_dp_string(self, node, children):
+        parts = []
+        current_part = None
+        current_text = ''
+        for i in children:
+            if isinstance(i, ColorBase):
+                if current_part:
+                    if current_text:
+                        current_part.text = current_text
+                        parts.append(current_part)
+                current_text = ''
+                current_part = ColorPart('', i)
+            else:
+                current_text += i
+        if current_part:
+            if current_text:
+                current_part.text = current_text
+                parts.append(current_part)
+        return ColorString(parts)
+
+
+def parse(text, use_unicode_for_glyphs=True, debug=False):
+    parser = ParserPython(dp_string, debug=debug, skipws=False)
+    tree = parser.parse(text)
+    if tree:
+        return visit_parse_tree(
+            tree,
+            DPTreeVisitor(use_unicode_for_glyphs=use_unicode_for_glyphs, debug=debug))
+    else:
+        return ColorString([])
+
