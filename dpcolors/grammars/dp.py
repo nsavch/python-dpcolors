@@ -1,6 +1,8 @@
-from arpeggio import RegExMatch as _, OrderedChoice, ZeroOrMore, ParserPython, PTNodeVisitor, visit_parse_tree
+import re
 
 from dpcolors import ColorRGB, ColorPart, ColorString, NoColor, ColorBase
+from . import BaseRegexParser, BaseParser
+
 
 qfont_ascii_table = [
  '\0', '#',  '#',  '#',  '#',  '.',  '#',  '#',
@@ -121,88 +123,68 @@ dec_to_rgb = [
 ]
 
 
-def dec_color():
-    return _(r'\^\d')
+class DecColor(BaseRegexParser):
+    regex = re.compile(r'\^(\d)')
+
+    def process(self, match):
+        return ColorPart('', ColorRGB(*dec_to_rgb[int(match.group(1))], max_value=255))
 
 
-def hex_color():
-    return _(r'\^x[0-9a-f]{3}', ignore_case=True)
+class HexColor(BaseRegexParser):
+    regex = re.compile(r'\^x([0-9a-f])([0-9a-f])([0-9a-f])', re.IGNORECASE)
+
+    def process(self, match):
+        r = int(match.group(1), 16)
+        g = int(match.group(2), 16)
+        b = int(match.group(3), 16)
+        return ColorPart('', ColorRGB(r, g, b, max_value=15))
 
 
-def literal_caret():
-    return '^^'
+class LiteralCaret(BaseRegexParser):
+    regex = re.compile(r'\^\^')
 
-
-def character():
-    return _('.')
-
-
-def dp_token():
-    return OrderedChoice([dec_color, hex_color, literal_caret, character])
-
-
-def dp_string():
-    return ZeroOrMore(dp_token)
-
-
-class DPTreeVisitor(PTNodeVisitor):
-    def __init__(self, use_unicode_for_glyphs, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.use_unicode_for_glyphs = use_unicode_for_glyphs
-
-    def visit_dec_color(self, node, children):
-        rgb = dec_to_rgb[int(node.value[1:])]
-        if rgb:
-            return ColorRGB(*rgb, max_value=255).scale()
-        else:
-            return NoColor()
-
-    def visit_hex_color(self, node, children):
-        v = node.value
-        return ColorRGB(int(v[2], 16), int(v[3], 16), int(v[4], 16), max_value=15).scale()
-
-    def visit_literal_caret(self, node, children):
+    def process(self, match):
         return '^'
 
-    def visit_character(self, node, children):
-        if '\ue000' <= node.value <= '\ue0ff':
-            if self.use_unicode_for_glyphs:
-                return qfont_unicode_glyphs[ord(node.value) - 0xe000]
-            else:
-                return qfont_ascii_table[ord(node.value) - 0xe000]
-        return node.value
 
-    def visit_dp_token(self, node, children):
-        return children[0]
+class CharacterAscii(BaseRegexParser):
+    regex = re.compile('.')
 
-    def visit_dp_string(self, node, children):
-        parts = []
-        current_part = None
-        current_text = ''
-        for i in children:
-            if isinstance(i, ColorBase):
-                if current_part:
-                    if current_text:
-                        current_part.text = current_text
-                        parts.append(current_part)
-                current_text = ''
-                current_part = ColorPart('', i)
-            else:
-                current_text += i
-        if current_part:
-            if current_text:
-                current_part.text = current_text
-                parts.append(current_part)
-        return ColorString(parts)
+    def process(self, match):
+        c = match.group(0)
+        if '\ue000' <= c <= '\ue0ff':
+            return qfont_ascii_table[ord(c) - 0xe000]
+        else:
+            return c
 
 
-def parse(text, use_unicode_for_glyphs=True, debug=False):
-    parser = ParserPython(dp_string, debug=debug, skipws=False)
-    tree = parser.parse(text)
-    if tree:
-        return visit_parse_tree(
-            tree,
-            DPTreeVisitor(use_unicode_for_glyphs=use_unicode_for_glyphs, debug=debug))
+class CharacterUnicode(BaseRegexParser):
+    regex = re.compile('.')
+
+    def process(self, match):
+        c = match.group(0)
+        if '\ue000' <= c <= '\ue0ff':
+            return qfont_unicode_glyphs[ord(c) - 0xe000]
+        else:
+            return c
+
+
+class BaseDPParser(BaseParser):
+    markers = [DecColor(), HexColor()]
+    special = [LiteralCaret()]
+
+
+def make_parser(use_unicode_for_glyphs):
+    if use_unicode_for_glyphs:
+        class DPParser(BaseDPParser):
+            special = [LiteralCaret(), CharacterUnicode()]
     else:
-        return ColorString([])
+        class DPParser(BaseDPParser):
+            special = [LiteralCaret(), CharacterAscii()]
+    return DPParser
+
+
+def parse(text, use_unicode_for_glyphs=True):
+    parser = make_parser(use_unicode_for_glyphs)()
+    return parser.parse(text)
 
