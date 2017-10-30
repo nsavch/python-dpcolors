@@ -51,6 +51,7 @@ for r in range(16):
             irc_color = c.to_8bit().to_irc()
 
             out.write(row_template % (r, g, b, r, g, b, *COLORS[irc_color], irc_color))
+            print(f'{c.to_8bit().to_ansi()}{r}-{g}-{b}')
     out.write(footer)
 out.write('</body></html>')
 

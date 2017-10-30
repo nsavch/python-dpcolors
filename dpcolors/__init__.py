@@ -1,9 +1,15 @@
 import colorsys
-import math
+import re
+
+from colors import color as ansicolor
+
+
+ESC = '\x1b'
 
 
 class ColorBase:
-    pass
+    def to_8bit(self):
+        Color8Bit(Color8Bit.BLACK)
 
 
 class Color8Bit(ColorBase):
@@ -19,6 +25,9 @@ class Color8Bit(ColorBase):
     def __init__(self, color, bright):
         self.color = color
         self.bright = bright
+
+    def is_color(self):
+        return self.color not in (self.BLACK, self.WHITE)
 
     def to_irc(self):
         d = {
@@ -40,6 +49,18 @@ class Color8Bit(ColorBase):
             (self.WHITE, False): 15
         }
         return d[(self.color, self.bright)]
+
+    def to_name(self):
+        return {
+            self.BLACK: 'black',
+            self.RED: 'red',
+            self.GREEN: 'green',
+            self.YELLOW: 'yellow',
+            self.BLUE: 'blue',
+            self.MAGENTA: 'magenta',
+            self.CYAN: 'cyan',
+            self.WHITE: 'white'
+        }[self.color]
 
 
 class ColorRGB(ColorBase):
@@ -134,6 +155,66 @@ class ColorPart:
         else:
             return 'ColorPart(%r)' % self.text
 
+    def to_dp(self):
+        text = self.text.replace('^', '^^')
+        if self.color:
+            return '^x%s%s' % (self.color.to_dp(), text)
+        else:
+            return text
+
+    def to_irc(self):
+        ignore_re = re.compile('[\x03\x02\x1D\x1F\x16\x0F]')
+        text = ignore_re.sub('', self.text)
+        if self.color and self.bg_color:
+            return '\x03%d,%d%s\x02' % (self.color.to_8bit().to_irc(),
+                                        self.bg_color.to_8bit().to_irc(),
+                                        text)
+        elif self.color:
+            c = self.color.to_8bit()
+            return '\x03%d%s\x02' % (c.is_color() and c.to_irc(), text)
+        elif self.bg_color:
+            return '\x031,%d%s\x02' % (self.bg_color.to_8bit().to_irc(), text)
+        else:
+            return '\x02%s' % text
+
+    def to_ansi_8bit(self):
+        text = self.text.replace('\x1b', '')
+        if self.color and self.bg_color:
+            c = self.color.to_8bit()
+            return ansicolor(text,
+                             fg=c.c.to_name(),
+                             bg=self.bg_color.to_8bit().to_name,
+                             style=c.bright and 'bold' or None)
+        elif self.color:
+            c = self.color.to_8bit()
+            return ansicolor(text,
+                             fg=c.is_color() and c.to_name(),
+                             style=c.bright and 'bold' or None)
+        elif self.bg_color:
+            return ansicolor(text,
+                             bg=self.bg_color.to_8bit().to_name)
+        else:
+            return text
+
+    def to_ansi_24bit(self):
+        text = self.text.replace('\x1b', '')
+        if self.color and self.bg_color:
+            c = self.color.scale(255)
+            bg_c = self.bg_color.scale(255)
+            return ansicolor(text,
+                             fg=(c.r, c.g, c.b),
+                             bg=(bg_c.r, bg_c.g, bg_c.b))
+        elif self.color:
+            c = self.color.scale(255)
+            return ansicolor(text,
+                             fg=(c.r, c.g, c.b))
+        elif self.bg_color:
+            bg_c = self.bg_color.scale(255)
+            return ansicolor(text,
+                             bg=(bg_c.r, bg_c.g, bg_c.b))
+        else:
+            return text
+
     def __str__(self):
         return self.text
 
@@ -162,7 +243,7 @@ class ColorString:
             return self.original_bytes
         res = []
         for i in self.parts:
-            res.append('^x%s%s' % (i.color.to_dp(), i.text.replace('^', '^^')))
+            res.append(i.to_dp())
         s = ''.join(res) + '^7'
         return s.encode('utf8')
 
@@ -179,9 +260,25 @@ class ColorString:
         instance.original_bytes = original_bytes
         return instance
 
-    def to_irc(self, preserve_original=True, for_light_background=True):
+    def to_irc(self, preserve_original=True):
         if preserve_original:
             return self.original_bytes
+        res = []
+        for i in self.parts:
+            res.append(i.to_irc())
+        return ''.join(res).encode('utf8')
+
+    def to_ansi_8bit(self):
+        res = []
+        for i in self.parts:
+            res.append(i.to_ansi_8bit())
+        return ''.join(res).encode('utf8')
+
+    def to_ansi_24bit(self):
+        res = []
+        for i in self.parts:
+            res.append(i.to_ansi_24bit())
+        return ''.join(res).encode('utf8')
 
     def __str__(self):
         return ''.join([str(i) for i in self.parts])
