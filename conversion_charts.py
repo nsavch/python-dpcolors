@@ -6,7 +6,7 @@ from dpcolors.grammars.irc import COLORS
 html_header = '<!DOCTYPE html><html><head></head><body>'
 
 
-out = open('test.html', 'w')
+out = open('charts/test.html', 'w')
 out.write(html_header)
 out.write('<table style="margin-left: auto; margin-right: auto" cellspacing=0>')
 h = 0
@@ -21,7 +21,7 @@ out.write('</table>')
 out.close()
 
 
-out = open('test_hue.html', 'w')
+out = open('charts/test_hue.html', 'w')
 out.write(html_header)
 out.write('<div id="color" style="height: 20px; width: 20px">0/0</div>')
 out.write('<table style="margin-left: auto; margin-right: auto" cellspacing=0>')
@@ -38,7 +38,7 @@ out.write('</table>')
 out.close()
 
 
-out = open('rgb_to_irc.html', 'w')
+out = open('charts/rgb_to_irc.html', 'w')
 out.write(html_header)
 header = '<table style="float: left"><tr><th>&nbsp;</th><th>RGB</th><th>IRC</th><th>&nbsp;</th></tr>'
 footer = '</table>'
@@ -51,7 +51,6 @@ for r in range(16):
             irc_color = c.to_8bit().to_irc()
 
             out.write(row_template % (r, g, b, r, g, b, *COLORS[irc_color], irc_color))
-            print(f'{c.to_8bit().to_ansi()}{r}-{g}-{b}')
     out.write(footer)
 out.write('</body></html>')
 

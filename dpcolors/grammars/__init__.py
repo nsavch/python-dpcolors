@@ -5,7 +5,7 @@ class BaseRegexParser:
     regex = None
 
     def process(self, match):
-        raise NotImplementedError()
+        raise NotImplementedError()  # PRAGMA: nocover
 
 
 class BaseParser:

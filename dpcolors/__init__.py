@@ -83,7 +83,7 @@ class ColorRGB(ColorBase):
                         max_value=new_max_value)
 
     def to_dp(self):
-        return '^x{}{}{}'.format(*self.scale(15))
+        return '^x{:x}{:x}{:x}'.format(*[round(i) for i in self.scale(15)])
 
     def to_8bit(self):
         h, s, v = colorsys.rgb_to_hsv(*self.scale(1))
@@ -129,7 +129,7 @@ class NoColor(ColorBase):
         return 'NoColor()'
 
     def to_irc(self):
-        return '\3'
+        return '\x03\x0f'
 
     def to_dp(self):
         return '^7'
@@ -158,24 +158,27 @@ class ColorPart:
     def to_dp(self):
         text = self.text.replace('^', '^^')
         if self.color:
-            return '^x%s%s' % (self.color.to_dp(), text)
+            return '%s%s' % (self.color.to_dp(), text)
         else:
-            return text
+            return '^7' + text
 
     def to_irc(self):
         ignore_re = re.compile('[\x03\x02\x1D\x1F\x16\x0F]')
         text = ignore_re.sub('', self.text)
         if self.color and self.bg_color:
-            return '\x03%d,%d%s\x02' % (self.color.to_8bit().to_irc(),
+            return '\x03%02d,%02d%s' % (self.color.to_8bit().to_irc(),
                                         self.bg_color.to_8bit().to_irc(),
                                         text)
         elif self.color:
             c = self.color.to_8bit()
-            return '\x03%d%s\x02' % (c.is_color() and c.to_irc(), text)
+            if c.is_color():
+                return '\x03%02d%s' % (c.to_irc(), text)
+            else:
+                return '\x03\x0f' + text
         elif self.bg_color:
-            return '\x031,%d%s\x02' % (self.bg_color.to_8bit().to_irc(), text)
+            return '\x0301,%02d%s' % (self.bg_color.to_8bit().to_irc(), text)
         else:
-            return '\x02%s' % text
+            return '\x03\x0f' + text
 
     def to_ansi_8bit(self):
         text = self.text.replace('\x1b', '')
@@ -239,7 +242,7 @@ class ColorString:
         return instance
 
     def to_dp(self, preserve_original=True):
-        if preserve_original:
+        if preserve_original and self.original_type == 'dp':
             return self.original_bytes
         res = []
         for i in self.parts:
@@ -261,12 +264,13 @@ class ColorString:
         return instance
 
     def to_irc(self, preserve_original=True):
-        if preserve_original:
+        if preserve_original and self.original_type == 'irc':
             return self.original_bytes
         res = []
         for i in self.parts:
             res.append(i.to_irc())
-        return ''.join(res).encode('utf8')
+        s = ''.join(res) + '\x03\x0f'
+        return s.encode('utf8')
 
     def to_ansi_8bit(self):
         res = []
