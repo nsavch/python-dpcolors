@@ -1,4 +1,7 @@
 # python-dpcolors
+
+[![Build Status](https://travis-ci.org/nsavch/python-dpcolors.svg?branch=master)](https://travis-ci.org/nsavch/python-dpcolors)
+
 Python library for converting DarkPlaces color strings to various other formats
 
 Supports the following conversions
