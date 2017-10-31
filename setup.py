@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 setup(name='python-dpcolors',
       version='0.1.0',
       description='library to convert Xonotic color strings to various other formats',
-      long_description='library to convert Xonotic color strings to various other formats',
+      long_description=open('README.md').read(),
       url='https://github.com/nsavch/python-dpcolors',
       author='Nick Savchenko',
       author_email='nsavch@gmail.com',
