@@ -7,12 +7,10 @@ from colors import color as ansicolor
 ESC = '\x1b'
 
 
-class ColorBase:
-    def to_8bit(self):
-        Color8Bit(Color8Bit.BLACK)
-
-
-class Color8Bit(ColorBase):
+class Color8Bit:
+    """
+    Helper class for dealing with 8-bit colors
+    """
     BLACK = 0
     RED = 1
     GREEN = 2
@@ -26,10 +24,14 @@ class Color8Bit(ColorBase):
         self.color = color
         self.bright = bright
 
-    def is_color(self):
+    def is_color(self) -> bool:
         return self.color not in (self.BLACK, self.WHITE)
 
-    def to_irc(self):
+    def to_irc(self) -> int:
+        """
+        Convert to mIRC color Code
+        :return: IRC color code
+        """
         d = {
             (self.BLACK, True): 14,
             (self.BLACK, False): 1,
@@ -50,7 +52,11 @@ class Color8Bit(ColorBase):
         }
         return d[(self.color, self.bright)]
 
-    def to_name(self):
+    def to_name(self) -> str:
+        """
+        Convert to ANSI color name
+        :return: ANSI color name
+        """
         return {
             self.BLACK: 'black',
             self.RED: 'red',
@@ -63,7 +69,14 @@ class Color8Bit(ColorBase):
         }[self.color]
 
 
+class ColorBase:
+    pass
+
+
 class ColorRGB(ColorBase):
+    """
+    Class representing an RGB color
+    """
     def __init__(self, r, g, b, max_value=1):
         self.r = r
         self.g = g
@@ -76,16 +89,29 @@ class ColorRGB(ColorBase):
         yield self.b
 
     def scale(self, new_max_value=1):
+        """
+        Scale R, G and B parameters
+        :param new_max_value: how much to scale
+        :return: a new ColorRGB instance
+        """
         f = new_max_value / self.max
         return ColorRGB(self.r * f,
                         self.g * f,
                         self.b * f,
                         max_value=new_max_value)
 
-    def to_dp(self):
+    def to_dp(self) -> str:
+        """
+        Convert to a DP color marker
+        :return: DP color marker
+        """
         return '^x{:x}{:x}{:x}'.format(*[round(i) for i in self.scale(15)])
 
     def to_8bit(self):
+        """
+        Convert to 8-bit color
+        :return: Color8Bit instance
+        """
         h, s, v = colorsys.rgb_to_hsv(*self.scale(1))
         # Check if the color is a shade of grey
         if s * v < 0.3:
@@ -128,14 +154,17 @@ class NoColor(ColorBase):
     def __repr__(self):
         return 'NoColor()'
 
-    def to_irc(self):
-        return '\x03\x0f'
-
     def to_dp(self):
         return '^7'
 
+    def to_8bit(self):
+        return Color8Bit(Color8Bit.BLACK, False)
+
 
 class ColorPart:
+    """
+    Class representing a part of single-colored part of a colored string
+    """
     def __init__(self, text, fg_color=None, bg_color=None):
         if fg_color:
             self.color = fg_color
@@ -156,13 +185,18 @@ class ColorPart:
             return 'ColorPart(%r)' % self.text
 
     def to_dp(self):
+        """
+        Convert to darkplaces color format
+        :return:
+        """
         text = self.text.replace('^', '^^')
-        if self.color:
-            return '%s%s' % (self.color.to_dp(), text)
-        else:
-            return '^7' + text
+        return '%s%s' % (self.color.to_dp(), text)
 
     def to_irc(self):
+        """
+        Convert to mIRC color format
+        :return:
+        """
         ignore_re = re.compile('[\x03\x02\x1D\x1F\x16\x0F]')
         text = ignore_re.sub('', self.text)
         if self.color and self.bg_color:
@@ -181,12 +215,16 @@ class ColorPart:
             return '\x03\x0f' + text
 
     def to_ansi_8bit(self):
+        """
+        Convert to ANSI 8-bit color format
+        :return:
+        """
         text = self.text.replace('\x1b', '')
         if self.color and self.bg_color:
             c = self.color.to_8bit()
             return ansicolor(text,
-                             fg=c.c.to_name(),
-                             bg=self.bg_color.to_8bit().to_name,
+                             fg=c.to_name(),
+                             bg=self.bg_color.to_8bit().to_name(),
                              style=c.bright and 'bold' or None)
         elif self.color:
             c = self.color.to_8bit()
@@ -195,11 +233,15 @@ class ColorPart:
                              style=c.bright and 'bold' or None)
         elif self.bg_color:
             return ansicolor(text,
-                             bg=self.bg_color.to_8bit().to_name)
+                             bg=self.bg_color.to_8bit().to_name())
         else:
             return text
 
     def to_ansi_24bit(self):
+        """
+        Convert to ANSI 24-bit color format
+        :return:
+        """
         text = self.text.replace('\x1b', '')
         if self.color and self.bg_color:
             c = self.color.scale(255)
@@ -223,13 +265,22 @@ class ColorPart:
 
 
 class ColorString:
+    """
+    Class representing a colored string
+    """
     def __init__(self, parts):
         self.parts = parts
         self.original_type = None
         self.original_bytes = None
 
     @classmethod
-    def from_dp(cls, text, use_unicode_for_glyphs=True, debug=False):
+    def from_dp(cls, text, use_unicode_for_glyphs=True):
+        """
+        Create a new instance of ColorString from a darkplaces-formatted text
+        :param text: darkplaces text string (either str or bytes)
+        :param use_unicode_for_glyphs: convert unicode glyphs to ascii
+        :return: ColorString instance
+        """
         from .grammars.dp import parse as parse_dp
         if isinstance(text, bytes):
             original_bytes = text
@@ -242,6 +293,12 @@ class ColorString:
         return instance
 
     def to_dp(self, preserve_original=True):
+        """
+        Convert to darkplaces color format
+        :param preserve_original: if the current ColorString instance was created from a darkplaces text,
+               then just return the original string
+        :return:
+        """
         if preserve_original and self.original_type == 'dp':
             return self.original_bytes
         res = []
@@ -252,6 +309,11 @@ class ColorString:
 
     @classmethod
     def from_irc(cls, text):
+        """
+        Create a new instance of ColorString from a mIRC-formatted text
+        :param text: mIRC-formatted text
+        :return:
+        """
         from .grammars.irc import parse as parse_irc
         if isinstance(text, bytes):
             original_bytes = text
@@ -264,6 +326,12 @@ class ColorString:
         return instance
 
     def to_irc(self, preserve_original=True):
+        """
+        Convert to mIRC format
+        :param preserve_original: if the current ColorString instance was created from mIRC text,
+               then just return the original string
+        :return:
+        """
         if preserve_original and self.original_type == 'irc':
             return self.original_bytes
         res = []
@@ -273,12 +341,20 @@ class ColorString:
         return s.encode('utf8')
 
     def to_ansi_8bit(self):
+        """
+        Convert to ANSI 8-bit
+        :return:
+        """
         res = []
         for i in self.parts:
             res.append(i.to_ansi_8bit())
         return ''.join(res).encode('utf8')
 
     def to_ansi_24bit(self):
+        """
+        Convert to ANSI 24-bit
+        :return:
+        """
         res = []
         for i in self.parts:
             res.append(i.to_ansi_24bit())
